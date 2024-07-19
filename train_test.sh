@@ -1,0 +1,1 @@
+python train.py -s data/chair -r 2 -m output/chair --config_file config/gaussian_dataset/

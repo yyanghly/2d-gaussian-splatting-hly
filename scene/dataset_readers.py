@@ -34,6 +34,8 @@ class CameraInfo(NamedTuple):
     image_name: str
     width: int
     height: int
+    objects: np.array
+    object_path: str
 
 class SceneInfo(NamedTuple):
     point_cloud: BasicPointCloud
@@ -65,7 +67,7 @@ def getNerfppNorm(cam_info):
 
     return {"translate": translate, "radius": radius}
 
-def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
+def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder, objects_folder):
     cam_infos = []
     for idx, key in enumerate(cam_extrinsics):
         sys.stdout.write('\r')
@@ -97,9 +99,15 @@ def readColmapCameras(cam_extrinsics, cam_intrinsics, images_folder):
         image_path = os.path.join(images_folder, os.path.basename(extr.name))
         image_name = os.path.basename(image_path).split(".")[0]
         image = Image.open(image_path)
-
+        object_path = os.path.join(objects_folder, image_name + '.png')
+        objects = Image.open(object_path) if os.path.exists(object_path) else None
+        # if (image_name == "0001"):
+        #     print()
+        #     print("image_size", image.size)
+        #     print("object_size", objects.size if objects else None)
+        #     input()
         cam_info = CameraInfo(uid=uid, R=R, T=T, FovY=FovY, FovX=FovX, image=image,
-                              image_path=image_path, image_name=image_name, width=width, height=height)
+                              image_path=image_path, image_name=image_name, width=width, height=height, objects=objects, object_path=object_path)
         cam_infos.append(cam_info)
     sys.stdout.write('\n')
     return cam_infos
@@ -129,7 +137,7 @@ def storePly(path, xyz, rgb):
     ply_data = PlyData([vertex_element])
     ply_data.write(path)
 
-def readColmapSceneInfo(path, images, eval, llffhold=8):
+def readColmapSceneInfo(path, images, eval, object_path, llffhold=8, n_views=100, random_init=False, train_split=False):
     try:
         cameras_extrinsic_file = os.path.join(path, "sparse/0", "images.bin")
         cameras_intrinsic_file = os.path.join(path, "sparse/0", "cameras.bin")
@@ -141,16 +149,56 @@ def readColmapSceneInfo(path, images, eval, llffhold=8):
         cam_extrinsics = read_extrinsics_text(cameras_extrinsic_file)
         cam_intrinsics = read_intrinsics_text(cameras_intrinsic_file)
 
+    object_dir = 'object_mask' if object_path == None else object_path
     reading_dir = "images" if images == None else images
-    cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir))
+    cam_infos_unsorted = readColmapCameras(cam_extrinsics=cam_extrinsics, cam_intrinsics=cam_intrinsics, images_folder=os.path.join(path, reading_dir), objects_folder=os.path.join(path, object_dir))
     cam_infos = sorted(cam_infos_unsorted.copy(), key = lambda x : x.image_name)
 
     if eval:
-        train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
-        test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
+        if train_split:
+            train_dir = os.path.join(path, "images_train")
+            train_names = sorted(os.listdir(train_dir))
+            train_names = [train_name.split('.')[0] for train_name in train_names]
+            train_cam_infos = []
+            test_cam_infos = []
+            for cam_info in cam_infos:
+                if cam_info.image_name in train_names:
+                    train_cam_infos.append(cam_info)
+                else:
+                    test_cam_infos.append(cam_info)
+
+        else:
+            train_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold != 0]
+            test_cam_infos = [c for idx, c in enumerate(cam_infos) if idx % llffhold == 0]
+
+            if n_views == 100:
+                pass 
+            elif n_views == 50:
+                idx_sub = np.linspace(0, len(train_cam_infos)-1, round(len(train_cam_infos)*0.5)) # 50% views
+                idx_sub = [round(i) for i in idx_sub]
+                train_cam_infos = [train_cam_infos[i_sub] for i_sub in idx_sub]
+            elif isinstance(n_views,int):
+                idx_sub = np.linspace(0, len(train_cam_infos)-1, n_views) # 3views
+                idx_sub = [round(i) for i in idx_sub]
+                train_cam_infos = [train_cam_infos[i_sub] for i_sub in idx_sub]
+                print(train_cam_infos)
+            else:
+                raise NotImplementedError
+        print("Training images:     ", len(train_cam_infos))
+        print("Testing images:     ", len(test_cam_infos))
     else:
-        train_cam_infos = cam_infos
-        test_cam_infos = []
+        if train_split:
+            train_dir = os.path.join(path, "images_train")
+            train_names = sorted(os.listdir(train_dir))
+            train_names = [train_name.split('.')[0] for train_name in train_names]
+            train_cam_infos = []
+            for cam_info in cam_infos:
+                if cam_info.image_name in train_names:
+                    train_cam_infos.append(cam_info)
+            test_cam_infos = []
+        else:
+            train_cam_infos = cam_infos
+            test_cam_infos = []
 
     nerf_normalization = getNerfppNorm(train_cam_infos)
 

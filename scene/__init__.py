@@ -41,11 +41,12 @@ class Scene:
         self.test_cameras = {}
 
         if os.path.exists(os.path.join(args.source_path, "sparse")):
-            scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval)
+            scene_info = sceneLoadTypeCallbacks["Colmap"](args.source_path, args.images, args.eval, args.object_path, n_views=args.n_views, random_init=args.random_init, train_split=args.train_split)
         elif os.path.exists(os.path.join(args.source_path, "transforms_train.json")):
             print("Found transforms_train.json file, assuming Blender data set!")
             scene_info = sceneLoadTypeCallbacks["Blender"](args.source_path, args.white_background, args.eval)
         else:
+            # print(os.path.join(args.source_path, "sparse"))
             assert False, "Could not recognize scene type!"
 
         if not self.loaded_iter:
@@ -56,6 +57,7 @@ class Scene:
             if scene_info.test_cameras:
                 camlist.extend(scene_info.test_cameras)
             if scene_info.train_cameras:
+                # print("train_cameras", scene_info.train_cameras)
                 camlist.extend(scene_info.train_cameras)
             for id, cam in enumerate(camlist):
                 json_cams.append(camera_to_JSON(id, cam))
@@ -70,15 +72,22 @@ class Scene:
 
         for resolution_scale in resolution_scales:
             print("Loading Training Cameras")
+            print("resolution_scale", resolution_scale)
             self.train_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.train_cameras, resolution_scale, args)
             print("Loading Test Cameras")
             self.test_cameras[resolution_scale] = cameraList_from_camInfos(scene_info.test_cameras, resolution_scale, args)
         
         if self.loaded_iter:
-            self.gaussians.load_ply(os.path.join(self.model_path,
-                                                           "point_cloud",
-                                                           "iteration_" + str(self.loaded_iter),
-                                                           "point_cloud.ply"))
+            if isinstance(self.loaded_iter,str):
+                print("edit load path", self.loaded_iter)
+                self.gaussians.load_ply(os.path.join(self.model_path,
+                                                            "point_cloud"+self.loaded_iter,
+                                                            "point_cloud.ply"))
+            else:
+                self.gaussians.load_ply(os.path.join(self.model_path,
+                                                            "point_cloud",
+                                                            "iteration_" + str(self.loaded_iter),
+                                                            "point_cloud.ply"))
         else:
             self.gaussians.create_from_pcd(scene_info.point_cloud, self.cameras_extent)
 

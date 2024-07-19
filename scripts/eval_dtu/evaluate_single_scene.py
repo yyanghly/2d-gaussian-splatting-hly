@@ -88,7 +88,7 @@ def cull_scan(scan, mesh_path, result_mesh_file, instance_dir):
     sampled_masks = torch.stack(sampled_masks, -1)
     # filter
     
-    mask = (sampled_masks > 0.).all(dim=-1).cpu().numpy()
+    mask = (sampled_masks > 0.).all(dim=-1).cuda().numpy()
     face_mask = mask[mesh.faces].all(axis=1)
 
     mesh.update_vertices(mask)

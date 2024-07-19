@@ -13,14 +13,15 @@ from scene.cameras import Camera
 import numpy as np
 from utils.general_utils import PILtoTorch
 from utils.graphics_utils import fov2focal
-
+# import torch
 WARNED = False
 
 def loadCam(args, id, cam_info, resolution_scale):
     orig_w, orig_h = cam_info.image.size
-
+    # print("resolution scale", resolution_scale)
     if args.resolution in [1, 2, 4, 8]:
         resolution = round(orig_w/(resolution_scale * args.resolution)), round(orig_h/(resolution_scale * args.resolution))
+        # print("resolution", resolution)
     else:  # should be a type that converts to float
         if args.resolution == -1:
             if orig_w > 1600:
@@ -37,7 +38,8 @@ def loadCam(args, id, cam_info, resolution_scale):
 
         scale = float(global_down) * float(resolution_scale)
         resolution = (int(orig_w / scale), int(orig_h / scale))
-
+        
+    #method1
     if len(cam_info.image.split()) > 3:
         import torch
         resized_image_rgb = torch.cat([PILtoTorch(im, resolution) for im in cam_info.image.split()[:3]], dim=0)
@@ -47,16 +49,24 @@ def loadCam(args, id, cam_info, resolution_scale):
         resized_image_rgb = PILtoTorch(cam_info.image, resolution)
         loaded_mask = None
         gt_image = resized_image_rgb
-
+    import torch
+    # objects = PILtoTorch(cam_info.objects, resolution)
+    objects = torch.from_numpy(np.array(cam_info.objects.resize(resolution))) #gaussian_grouping, reso not correct
+    # objects = cam_info.objects.resize(resolution)
+    # print("load_cam, gt_image size:", gt_image.shape)
+    # print("load_cam, objects size:", objects.shape)
+    
     return Camera(colmap_id=cam_info.uid, R=cam_info.R, T=cam_info.T, 
                   FoVx=cam_info.FovX, FoVy=cam_info.FovY, 
                   image=gt_image, gt_alpha_mask=loaded_mask,
-                  image_name=cam_info.image_name, uid=id, data_device=args.data_device)
+                  image_name=cam_info.image_name, uid=id, data_device=args.data_device,
+                  objects= objects)
 
 def cameraList_from_camInfos(cam_infos, resolution_scale, args):
     camera_list = []
 
     for id, c in enumerate(cam_infos):
+        
         camera_list.append(loadCam(args, id, c, resolution_scale))
 
     return camera_list
